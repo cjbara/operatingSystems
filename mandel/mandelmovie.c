@@ -45,7 +45,9 @@ int main(int argc, char *argv[]) {
 	commands[13] = ".000001";
 	commands[14] = "-o";
 	commands[15] = "mandel50.bmp";
-	commands[16] = (char *) NULL;
+	commands[16] = "-n";
+	commands[17] = "25";
+	commands[18] = (char *) NULL;
 	
 	double targetZoom = .000001;
 	double initialZoom = 2;

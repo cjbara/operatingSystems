@@ -16,6 +16,8 @@ struct thread_args {
 	double ymin; 
 	double ymax;
 	double max;
+	int threads;
+	int tnumber;
 };
 
 int iteration_to_color( int i, int max );
@@ -104,27 +106,32 @@ int main( int argc, char *argv[] )
 
 	// Compute the Mandelbrot image
 	int activeThreads = 0;
-	struct thread_args args;
+	struct thread_args args[threads];
 	pthread_t tid[threads];
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 
+	//Find the scale that each thread will handle
+	double yscale = scale / threads;
+	ycenter = ycenter - yscale;
 
 	//Start the loop to create all threads
 	while(activeThreads < threads) {
 		activeThreads++;
 		
 		//set all the arguments
-		args.bm = bm;
-		args.xmin = xcenter-scale;
-		args.xmax = xcenter+scale;
-		args.ymin = ycenter-scale;
-		args.ymax = ycenter+scale;
-		args.max = max;
-		
+		args[activeThreads].bm = bm;
+		args[activeThreads].xmin = xcenter-scale;
+		args[activeThreads].xmax = xcenter+scale;
+		args[activeThreads].ymin = ycenter-yscale;
+		args[activeThreads].ymax = ycenter+yscale;
+		args[activeThreads].max = max;
+		args[activeThreads].threads = threads;
+		args[activeThreads].tnumber = activeThreads;
+
 		//create a new thread
 		printf("Creating thread %d\n", activeThreads);
-		if(pthread_create(&tid[activeThreads], &attr, compute_image, &args) != 0){
+		if(pthread_create(&tid[activeThreads], &attr, compute_image, &args[activeThreads]) != 0){
 			printf("mandel: couldn't create new thread %d: %s\n", activeThreads,strerror(errno));
 		}
 	}
@@ -136,12 +143,8 @@ int main( int argc, char *argv[] )
 			printf("mandel: couldn't join thread %d: %s\n", activeThreads,strerror(errno));
 		}
 
-		//Code to handle the join
-
 		activeThreads--;
 	}
-
-	//Handle result after joining all threads
 
 	// Save the image in the stated file.
 	if(!bitmap_save(bm,outfile)) {
@@ -164,11 +167,12 @@ void * compute_image( void *a )
 	struct thread_args *args = a;
 
 	int width = bitmap_width(args->bm);
-	int height = bitmap_height(args->bm);
+	int height = bitmap_height(args->bm) / args->threads;
 
 	// For every pixel in the image...
+	int start = height * (args->tnumber - 1);
 
-	for(j=0;j<height;j++) {
+	for(j = start; j<start + height; j++) {
 
 		for(i=0;i<width;i++) {
 
