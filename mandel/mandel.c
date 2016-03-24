@@ -7,10 +7,20 @@
 #include <math.h>
 #include <errno.h>
 #include <string.h>
+#include <pthread.h>
+
+struct thread_args {
+	struct bitmap *bm;
+	double xmin; 
+	double xmax; 
+	double ymin; 
+	double ymax;
+	double max;
+};
 
 int iteration_to_color( int i, int max );
 int iterations_at_point( double x, double y, int max );
-void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, double ymax, int max );
+void * compute_image( void *a );
 
 void show_help()
 {
@@ -23,6 +33,7 @@ void show_help()
 	printf("-W <pixels> Width of the image in pixels. (default=500)\n");
 	printf("-H <pixels> Height of the image in pixels. (default=500)\n");
 	printf("-o <file>   Set output file. (default=mandel.bmp)\n");
+	printf("-n <threads>Maximum number of threads to use. (default=1)\n");
 	printf("-h          Show this help text.\n");
 	printf("\nSome examples are:\n");
 	printf("mandel -x -0.5 -y -0.5 -s 0.2\n");
@@ -44,11 +55,12 @@ int main( int argc, char *argv[] )
 	int    image_width = 500;
 	int    image_height = 500;
 	int    max = 1000;
+	int    threads = 1;
 
 	// For each command line argument given,
 	// override the appropriate configuration value.
 
-	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:h"))!=-1) {
+	while((c = getopt(argc,argv,"x:y:s:W:H:m:o:n:h"))!=-1) {
 		switch(c) {
 			case 'x':
 				xcenter = atof(optarg);
@@ -71,6 +83,9 @@ int main( int argc, char *argv[] )
 			case 'o':
 				outfile = optarg;
 				break;
+			case 'n':
+				threads = atoi(optarg);
+				break;
 			case 'h':
 				show_help();
 				exit(1);
@@ -79,7 +94,7 @@ int main( int argc, char *argv[] )
 	}
 
 	// Display the configuration of the image.
-	printf("mandel: x=%lf y=%lf scale=%lf max=%d outfile=%s\n",xcenter,ycenter,scale,max,outfile);
+	printf("mandel: x=%lf y=%lf scale=%lf max=%d outfile=%s threads=%d\n",xcenter,ycenter,scale,max,outfile, threads);
 
 	// Create a bitmap of the appropriate size.
 	struct bitmap *bm = bitmap_create(image_width,image_height);
@@ -88,7 +103,45 @@ int main( int argc, char *argv[] )
 	bitmap_reset(bm,MAKE_RGBA(0,0,255,0));
 
 	// Compute the Mandelbrot image
-	compute_image(bm,xcenter-scale,xcenter+scale,ycenter-scale,ycenter+scale,max);
+	int activeThreads = 0;
+	struct thread_args args;
+	pthread_t tid[threads];
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+
+
+	//Start the loop to create all threads
+	while(activeThreads < threads) {
+		activeThreads++;
+		
+		//set all the arguments
+		args.bm = bm;
+		args.xmin = xcenter-scale;
+		args.xmax = xcenter+scale;
+		args.ymin = ycenter-scale;
+		args.ymax = ycenter+scale;
+		args.max = max;
+		
+		//create a new thread
+		printf("Creating thread %d\n", activeThreads);
+		if(pthread_create(&tid[activeThreads], &attr, compute_image, &args) != 0){
+			printf("mandel: couldn't create new thread %d: %s\n", activeThreads,strerror(errno));
+		}
+	}
+
+	//Start the loop to join all threads
+	while(activeThreads > 0) {
+		printf("Joining thread %d\n", activeThreads);
+		if(pthread_join(tid[activeThreads], NULL) != 0){
+			printf("mandel: couldn't join thread %d: %s\n", activeThreads,strerror(errno));
+		}
+
+		//Code to handle the join
+
+		activeThreads--;
+	}
+
+	//Handle result after joining all threads
 
 	// Save the image in the stated file.
 	if(!bitmap_save(bm,outfile)) {
@@ -104,12 +157,14 @@ Compute an entire Mandelbrot image, writing each point to the given bitmap.
 Scale the image to the range (xmin-xmax,ymin-ymax), limiting iterations to "max"
 */
 
-void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, double ymax, int max )
+void * compute_image( void *a )
 {
 	int i,j;
 
-	int width = bitmap_width(bm);
-	int height = bitmap_height(bm);
+	struct thread_args *args = a;
+
+	int width = bitmap_width(args->bm);
+	int height = bitmap_height(args->bm);
 
 	// For every pixel in the image...
 
@@ -118,16 +173,17 @@ void compute_image( struct bitmap *bm, double xmin, double xmax, double ymin, do
 		for(i=0;i<width;i++) {
 
 			// Determine the point in x,y space for that pixel.
-			double x = xmin + i*(xmax-xmin)/width;
-			double y = ymin + j*(ymax-ymin)/height;
+			double x = args->xmin + i*(args->xmax - args->xmin)/width;
+			double y = args->ymin + j*(args->ymax - args->ymin)/height;
 
 			// Compute the iterations at that point.
-			int iters = iterations_at_point(x,y,max);
+			int iters = iterations_at_point(x,y, args->max);
 
 			// Set the pixel in the bitmap.
-			bitmap_set(bm,i,j,iters);
+			bitmap_set(args->bm,i,j,iters);
 		}
 	}
+	pthread_exit((void *) 1);
 }
 
 /*

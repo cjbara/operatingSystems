@@ -83,7 +83,6 @@ int main(int argc, char *argv[]) {
 				char *outfile = malloc(30);
 				sprintf(outfile, "mandel%d.bmp", moviesCompleted);
 				commands[15] = outfile;
-				free(outfile);
 
 				//calculate zoom commands[13]
 				char *newZoom = malloc(20);
@@ -93,7 +92,6 @@ int main(int argc, char *argv[]) {
 				}
 				sprintf(newZoom,"%lf", zoom);
 				commands[13] = newZoom;
-				free(newZoom);
 				printf("Starting %s\n", commands[15]);
 				test = execvp(commands[0], &commands[1]);
 				if (test < 0){
@@ -107,6 +105,7 @@ int main(int argc, char *argv[]) {
 			} else {
 				//parent process on failure
 				printf("Could not fork master process: %s\n\n", strerror(errno));
+				exit(1);
 			}
 		}
 	}
